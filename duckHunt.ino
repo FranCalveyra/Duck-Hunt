@@ -2,13 +2,13 @@
 WiFiClient WIFI_CLIENT;
 #include <PubSubClient.h>
 PubSubClient MQTT_CLIENT;
-
+#include <stdio.h>
 
 
 //Declaro las constantes, como los pines a usar y el tiempo total de juego
 const int finDeCarrera = 34;
 const int led = 26;
-const unsigned long tiempoTotalDeJuego = 30000; //En milisegundos
+const unsigned long tiempoTotalDeJuego = 10000; //En milisegundos
 //Declaro las variables
 unsigned long antesDePegar = 0;
 unsigned long momentoDeInicio = 0;
@@ -19,11 +19,11 @@ int dificultad;
 bool conectado = false;
 
 // Nombre y contraseña red WiFi.
-const char* ssid = "UA-Alumnos";
-const char* password = "41umn05WLC";
+const char* ssid = "FranCata_Movistar";
+const char* password = "triciclo";
 const int ledPin = 26;
 //Cosas del server
-const char* serverIp = "52.91.28.252"; //A modificar según sea necesario
+const char* serverIp = "54.197.76.252"; //A modificar según sea necesario
 char* subscribeTopicName ="game/init/1";
 char* publishTopicName = "game/result/1";
 
@@ -65,17 +65,16 @@ void setup() {
   MQTT_CLIENT.setCallback(callback);
   //Por ahora, la dificultad estará hardcodeada en 0
   
-  dificultad = 0;
+  dificultad = 1;
 
 }
 
 void loop() {  
-/*
+
 //Descomentar para comentar con el server
   conectarConMQTT();
-  if(conectado) 
-*/
-ejecutarJuego(dificultad);
+  while(conectado) 
+  ejecutarJuego(dificultad);
   
 }
 
@@ -152,7 +151,7 @@ void ejecutarJuego(int nivelDeDificultad){
 }
 
 int obtenerIntervalo(int nivelDeDificultad){
-  return 5000 - 1000*nivelDeDificultad; //Máximo nivel: 3
+  return 5000 +1000- 1000*nivelDeDificultad; //Máximo nivel: 3
 }
 
 void cambiarPuntaje(int delta){
@@ -173,6 +172,12 @@ void verificarFin(){
     Serial.println("Tu puntaje fue: ");
     Serial.println(puntaje);
     momentoDeInicio = millis(); //Reinicio el tiempo de juego
+
+    char mensaje[50];
+    snprintf(mensaje,sizeof(mensaje),"{\"player\":\"%s\",\"points\":%d,\"difficulty\":%d}","Pato1", puntaje, dificultad);
+    char* mensajeReal = mensaje;
+    MQTT_CLIENT.publish(publishTopicName, mensajeReal);
+    Serial.println(mensaje);
     puntaje = 0;
     conectado = false;
     //TODO: Enviar el puntaje por MQTT al server
