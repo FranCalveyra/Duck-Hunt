@@ -3,6 +3,7 @@ WiFiClient WIFI_CLIENT;
 #include <PubSubClient.h>
 PubSubClient MQTT_CLIENT;
 #include <stdio.h>
+#include <ArduinoJson.h>
 
 
 //Declaro las constantes, como los pines a usar y el tiempo total de juego
@@ -15,20 +16,22 @@ unsigned long momentoDeInicio = 0;
 unsigned long tiempoAlPegar = 0;
 
 int puntaje;
-int dificultad;
 bool conectado = false;
 
 // Nombre y contraseña red WiFi.
-const char* ssid = "FranCata_Movistar";
-const char* password = "triciclo";
+const char* ssid = "UA-Alumnos";
+const char* password = "41umn05WLC";
 const int ledPin = 26;
 //Cosas del server
-const char* serverIp = "54.197.76.252"; //A modificar según sea necesario
+const char* serverIp = "44.205.248.202"; //A modificar según sea necesario
 char* subscribeTopicName ="game/init/1";
 char* publishTopicName = "game/result/1";
 
-char* playerName = "";
-int difficulty =0;
+
+//JSON
+StaticJsonDocument<200> doc;
+const char* nombreJugador = "";
+int dificultad;
 
 
 /*FALTA: 
@@ -43,29 +46,9 @@ void setup() {
   momentoDeInicio = millis();
   puntaje = 0;
   //Acá iría el código de MQTT relacionado con obtener la dificultad del próximo juego, validando al jugador, etc.
-
-  // Conectar con WiFi.
-  Serial.println();
-  Serial.print("Conectando con ");
-  Serial.println(ssid);
-
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.println("WiFi conectado.");
-  Serial.print("IP: ");
-  Serial.println(WiFi.localIP());
-
-  // Configuración de la respuesta.
-  MQTT_CLIENT.setCallback(callback);
-  //Por ahora, la dificultad estará hardcodeada en 0
-  
-  dificultad = 1;
+  inicializarConexion();
+  //Necesito hacer un "fetch" de la dificultad, el nombre del jugador, etc. Pero para eso, necesito parsear un JSON
+  //Por ahora, la dificultad estará hardcodeada en 1
 
 }
 
@@ -110,14 +93,46 @@ void reconnect() {
 // Aquí configuramos lo que debe hacer cuando recibe un valor.
 void callback(char* recibido, byte* payload, unsigned int length) {
   Serial.print("Mensaje recibido: ");
-  Serial.print(recibido);
-  Serial.print("   ");
+  Serial.println(recibido);
+
+  char* json = new char[length+1] ;
+  
   for (int i = 0; i < length; i++) {
-    char receivedChar = (char)payload[i];
-    Serial.print(receivedChar);
+    json[i] = (char)payload[i];
   }
-  Serial.println();
+  json[length] = '\0';
+  Serial.println(json);
+
+  DeserializationError error = deserializeJson(doc,json);
+  if(error){
+    Serial.print(F("deserializeJson() falló con el código "));
+    Serial.println(error.c_str());
+    return;
+  }
+  setearValores();
   conectado = true;
+}
+
+void inicializarConexion(){
+    // Conectar con WiFi.
+  Serial.println();
+  Serial.print("Conectando con ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi conectado.");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+
+  // Configuración de la respuesta.
+  MQTT_CLIENT.setCallback(callback);
 }
 
 
@@ -174,7 +189,7 @@ void verificarFin(){
     momentoDeInicio = millis(); //Reinicio el tiempo de juego
 
     char mensaje[50];
-    snprintf(mensaje,sizeof(mensaje),"{\"player\":\"%s\",\"points\":%d,\"difficulty\":%d}","Pato1", puntaje, dificultad);
+    snprintf(mensaje,sizeof(mensaje),"{\"player\":\"%s\",\"points\":%d,\"difficulty\":%d}",nombreJugador, puntaje, dificultad);
     char* mensajeReal = mensaje;
     MQTT_CLIENT.publish(publishTopicName, mensajeReal);
     Serial.println(mensaje);
@@ -182,4 +197,9 @@ void verificarFin(){
     conectado = false;
     //TODO: Enviar el puntaje por MQTT al server
   }
+}
+
+void setearValores(){
+  nombreJugador = doc["player"];
+  dificultad = doc["difficulty"];
 }
