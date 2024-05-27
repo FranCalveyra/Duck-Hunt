@@ -3,29 +3,30 @@ WiFiClient WIFI_CLIENT;
 #include <PubSubClient.h>
 PubSubClient MQTT_CLIENT;
 #include <stdio.h>
-#include <ArduinoJson.h>
+#include <ArduinoJson.h> //Instalarla en caso de no tenerla
 
 
 //Declaro las constantes, como los pines a usar y el tiempo total de juego
 const int finDeCarrera = 34;
 const int led = 26;
-const unsigned long tiempoTotalDeJuego = 10000; //En milisegundos
-//Declaro las variables
+const unsigned long tiempoTotalDeJuego = 10000; //En milisegundos (en este caso son 10 segundos)
+//Declaro las variables de tiempo para el juego en cuestión
 unsigned long antesDePegar = 0;
 unsigned long momentoDeInicio = 0;
 unsigned long tiempoAlPegar = 0;
 
 int puntaje;
-bool conectado = false;
+bool conectado;
 
 // Nombre y contraseña red WiFi.
-const char* ssid = "UA-Alumnos";
-const char* password = "41umn05WLC";
+const char* ssid = "UA-Alumnos"; //A modificar según sea necesario
+const char* password = "41umn05WLC"; //A modificar según sea necesario
 const int ledPin = 26;
+
 //Cosas del server
 const char* serverIp = "44.205.248.202"; //A modificar según sea necesario
-char* subscribeTopicName ="game/init/1";
-char* publishTopicName = "game/result/1";
+char* topicDeSuscripcion ="game/init/1";
+char* topicDePublicacion = "game/result/1";
 
 
 //JSON
@@ -33,34 +34,28 @@ StaticJsonDocument<200> doc;
 const char* nombreJugador = "";
 int dificultad;
 
-
-/*FALTA: 
-- Conectar con MQTT
-*/
+//Lo que va a usar la ESP32
 void setup() {
   //Inicializo las variables y los dispositivos
   Serial.begin(115200);
   pinMode(finDeCarrera, INPUT);
   pinMode(led, OUTPUT);
   antesDePegar = millis();
-  momentoDeInicio = millis();
-  puntaje = 0;
-  //Acá iría el código de MQTT relacionado con obtener la dificultad del próximo juego, validando al jugador, etc.
+  puntaje = 5; //Hardcode por la diferencia de tiempo entre la solicitud del server y el inicio del juego
+  conectado = false;
+  //Inicializo la conexión con el server y me traigo los datos del jugador
   inicializarConexion();
-  //Necesito hacer un "fetch" de la dificultad, el nombre del jugador, etc. Pero para eso, necesito parsear un JSON
-  //Por ahora, la dificultad estará hardcodeada en 1
-
 }
 
-void loop() {  
-
-//Descomentar para comentar con el server
+void loop() {
   conectarConMQTT();
-  while(conectado) 
-  ejecutarJuego(dificultad);
-  
+  momentoDeInicio = millis();
+  while(conectado) {
+    ejecutarJuego(dificultad);
+    }
 }
 
+//A partir de acá son sólo funciones auxiliares y el cómo funciona por abajo
 
 //MQTT
 void conectarConMQTT(){
@@ -68,8 +63,9 @@ void conectarConMQTT(){
     reconnect();
   }
   MQTT_CLIENT.loop();
-
 }
+
+
 // Reconecta con MQTT broker
 void reconnect() {
    MQTT_CLIENT.setServer(serverIp, 1883);  // si se usa un servidor en la red local, verificar IP
@@ -82,7 +78,7 @@ void reconnect() {
     Serial.println("Intentando conectar con MQTT.");
     MQTT_CLIENT.connect("server");   // usar un nombre aleatorio
     //                      topic /  valor
-    MQTT_CLIENT.subscribe(subscribeTopicName);
+    MQTT_CLIENT.subscribe(topicDeSuscripcion);
 
     // Espera antes de volver a intentarlo.
     delay(3000);
@@ -96,21 +92,8 @@ void callback(char* recibido, byte* payload, unsigned int length) {
   Serial.println(recibido);
 
   char* json = new char[length+1] ;
-  
-  for (int i = 0; i < length; i++) {
-    json[i] = (char)payload[i];
-  }
-  json[length] = '\0';
-  Serial.println(json);
-
-  DeserializationError error = deserializeJson(doc,json);
-  if(error){
-    Serial.print(F("deserializeJson() falló con el código "));
-    Serial.println(error.c_str());
-    return;
-  }
+  parsearJson(json, payload, length);
   setearValores();
-  conectado = true;
 }
 
 void inicializarConexion(){
@@ -135,9 +118,34 @@ void inicializarConexion(){
   MQTT_CLIENT.setCallback(callback);
 }
 
+void setearValores(){
+  nombreJugador = doc["player"];
+  dificultad = doc["difficulty"];
+  conectado = true;
+}
+
+void parsearJson(char* json, byte* payload, unsigned int length){
+  //Copiar lo que llega de payload
+  for (int i = 0; i < length; i++) {
+    json[i] = (char)payload[i];
+  }
+
+  //Dejar el último en NULL
+  json[length] = '\0';
+  Serial.println(json);
+  
+  //Catchear errores
+  DeserializationError error = deserializeJson(doc,json);
+  if(error){
+    Serial.print(F("deserializeJson() falló con el código "));
+    Serial.println(error.c_str());
+    return;
+  }
+}
 
 //JUEGO
 void ejecutarJuego(int nivelDeDificultad){
+
   int FDC = digitalRead(finDeCarrera);
   bool patoGolpeado = FDC == LOW;
   bool activoParaPegar = true;
@@ -166,7 +174,7 @@ void ejecutarJuego(int nivelDeDificultad){
 }
 
 int obtenerIntervalo(int nivelDeDificultad){
-  return 5000 +1000- 1000*nivelDeDificultad; //Máximo nivel: 3
+  return 6000 - 1000*nivelDeDificultad; //Máximo nivel: 3, Mínimo: 1
 }
 
 void cambiarPuntaje(int delta){
@@ -187,19 +195,16 @@ void verificarFin(){
     Serial.println("Tu puntaje fue: ");
     Serial.println(puntaje);
     momentoDeInicio = millis(); //Reinicio el tiempo de juego
-
+    //Parseo el mensaje
     char mensaje[50];
-    snprintf(mensaje,sizeof(mensaje),"{\"player\":\"%s\",\"points\":%d,\"difficulty\":%d}",nombreJugador, puntaje, dificultad);
-    char* mensajeReal = mensaje;
-    MQTT_CLIENT.publish(publishTopicName, mensajeReal);
+    snprintf(mensaje,sizeof(mensaje),"{\"player\":\"%s\",\"points\":%d,\"difficulty\":%d}", nombreJugador, puntaje, dificultad);
+    
+    //Publico el mensaje
+    MQTT_CLIENT.publish(topicDePublicacion, mensaje);
+    
     Serial.println(mensaje);
-    puntaje = 0;
+    //Reinicio las variables
+    puntaje = 5; //Hardcode por la diferencia de tiempo entre la solicitud del server y el inicio del juego
     conectado = false;
-    //TODO: Enviar el puntaje por MQTT al server
   }
-}
-
-void setearValores(){
-  nombreJugador = doc["player"];
-  dificultad = doc["difficulty"];
 }
