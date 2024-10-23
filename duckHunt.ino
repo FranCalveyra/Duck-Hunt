@@ -19,14 +19,14 @@ int puntaje;
 bool conectado;
 
 // Nombre y contraseña red WiFi.
-const char* ssid = "UA-Alumnos"; //A modificar según sea necesario
-const char* password = "41umn05WLC"; //A modificar según sea necesario
+const char* ssid = "<Nombre de la red>"; //A modificar según sea necesario
+const char* password = "<Contraseña de la red>"; //A modificar según sea necesario
 const int ledPin = 26;
 
 //Cosas del server
-const char* serverIp = "44.205.248.202"; //A modificar según sea necesario
-char* topicDeSuscripcion ="game/init/1";
-char* topicDePublicacion = "game/result/1";
+const char* serverIp = "<IP del server MQTT>"; //A modificar según sea necesario
+char* topicDeSuscripcion ="<Topic de suscripción>";
+char* topicDePublicacion = "<Topic de publicación>";
 
 
 //JSON
